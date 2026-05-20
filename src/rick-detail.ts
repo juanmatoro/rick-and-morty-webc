@@ -9,15 +9,19 @@ template.innerHTML = `
     <div class="w-full mt-6 space-y-3 text-gray-700">
       <p class="flex justify-between border-b pb-1"><span class="font-medium">Species:</span> <span id="species"></span></p>
       <p class="flex justify-between border-b pb-1"><span class="font-medium">Gender:</span> <span id="gender"></span></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Origin:</span> <span id="origin"></span></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Location:</span> <span id="location"></span></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Episodes:</span> <span id="episodes"></span></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium">Origin:</span> <button id="origin-link" class="text-cyan-700 hover:underline text-right"></button></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium">Location:</span> <button id="location-link" class="text-cyan-700 hover:underline text-right"></button></p>
+      <div class="border-b pb-2">
+        <span class="font-medium">Episodes:</span>
+        <ul id="episodes-list" class="mt-2 space-y-1"></ul>
+      </div>
     </div>
   </div>
 `
 
 export class RickDetail extends HTMLElement {
   private characterData: Character | null = null
+  private episodeRequestToken = 0
 
   constructor() {
     super()
@@ -33,6 +37,7 @@ export class RickDetail extends HTMLElement {
     if (!this.characterData) {
       this.querySelector('h2')!.textContent = 'No character selected'
       this.querySelector('img')!.style.display = 'none'
+      ;(this.querySelector('#episodes-list') as HTMLElement).innerHTML = ''
       return
     }
 
@@ -56,9 +61,66 @@ export class RickDetail extends HTMLElement {
 
     this.querySelector('#species')!.textContent = data.species
     this.querySelector('#gender')!.textContent = data.gender
-    this.querySelector('#origin')!.textContent = data.origin.name
-    this.querySelector('#location')!.textContent = data.location.name
-    this.querySelector('#episodes')!.textContent = String(data.episode.length)
+    const originLink = this.querySelector('#origin-link') as HTMLButtonElement
+    originLink.textContent = data.origin.name
+    originLink.onclick = () => this.emitLocationSelection(data.origin.url)
+
+    const locationLink = this.querySelector('#location-link') as HTMLButtonElement
+    locationLink.textContent = data.location.name
+    locationLink.onclick = () => this.emitLocationSelection(data.location.url)
+
+    this.renderEpisodes(data.episode)
+  }
+
+  private async renderEpisodes(episodeUrls: string[]) {
+    const episodesList = this.querySelector('#episodes-list') as HTMLElement
+    episodesList.innerHTML = '<li class="text-gray-500 text-sm">Loading episodes...</li>'
+    const token = ++this.episodeRequestToken
+
+    try {
+      const episodes = await Promise.all(
+        episodeUrls.map(async (url) => {
+          const response = await fetch(url)
+          if (!response.ok) return { url, name: url }
+          const data = await response.json() as { name?: string; episode?: string }
+          return { url, name: data.name ?? url, code: data.episode ?? '' }
+        })
+      )
+
+      if (token !== this.episodeRequestToken) return
+      episodesList.innerHTML = ''
+
+      for (const episode of episodes) {
+        const li = document.createElement('li')
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'text-cyan-700 hover:underline text-left text-sm'
+        button.textContent = episode.code ? `${episode.code} · ${episode.name}` : episode.name
+        button.addEventListener('click', () => this.emitEpisodeSelection(episode.url))
+        li.appendChild(button)
+        episodesList.appendChild(li)
+      }
+    } catch {
+      if (token !== this.episodeRequestToken) return
+      episodesList.innerHTML = '<li class="text-red-600 text-sm">Could not load episodes.</li>'
+    }
+  }
+
+  private emitLocationSelection(locationUrl: string) {
+    if (!locationUrl) return
+    this.dispatchEvent(new CustomEvent('location-seleccionada-desde-modal', {
+      detail: { url: locationUrl },
+      bubbles: true,
+      composed: true
+    }))
+  }
+
+  private emitEpisodeSelection(episodeUrl: string) {
+    this.dispatchEvent(new CustomEvent('episode-seleccionado-desde-modal', {
+      detail: { url: episodeUrl },
+      bubbles: true,
+      composed: true
+    }))
   }
 }
 
