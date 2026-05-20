@@ -6,10 +6,15 @@ Proyecto educativo que consume la [API de Rick and Morty](https://rickandmortyap
 
 ```
 rick-container (orquestador)
-  ├── rick-list       → fetch + grid de tarjetas
-  │   └── rick-card   → tarjeta individual (hijo → padre: evento)
-  └── rick-modal      → modal con detalle
-      └── rick-detail → info completa del personaje (padre → hijo: propiedad)
+  ├── Página Characters
+  │   ├── rick-list         → fetch + grid de tarjetas + filtros
+  │   └── rick-card         → tarjeta individual (hijo → padre: evento)
+  ├── Página Locations
+  │   └── rick-location-list
+  ├── Página Episodes
+  │   └── rick-episode-list
+  └── rick-modal            → modal con detalle de character
+      └── rick-detail
 ```
 
 ## Flujo de datos
@@ -96,6 +101,11 @@ set character(data: Character | null) {
 - Recibe personaje vía `.character` y lo pasa a `rick-detail`
 - Recibe orden de abrir/cerrar vía `.open = true/false`
 - Emite `modal-cerrar` al hacer clic en ✕ o en el overlay
+
+**Detalle enriquecido del modal (`rick-detail`):**
+- Muestra lista de episodios concretos del personaje (código + nombre).
+- Cada episodio funciona como enlace interno a la página `Episodes`.
+- `Origin` y `Location` funcionan como enlaces internos a la página `Locations`.
 
 ---
 
@@ -195,7 +205,140 @@ Abre `http://localhost:5173`. Verás el grid de personajes. Haz clic en cualquie
 
 ---
 
-## Paso 12: Testing unitario completo con Vitest
+## Paso 12: Feature — búsqueda global por nombre (dataset completo)
+
+### Problema que resolvemos
+
+Antes, el buscador filtraba solo los personajes de la página visible (20 elementos).  
+Resultado: podías escribir un nombre existente en otra página y obtener “no encontrado”.
+
+### Objetivo funcional
+
+- Buscar por nombre en el **conjunto completo** de personajes.
+- Mantener búsqueda inmediata al escribir.
+- Mantener paginación de 20 en 20 sobre los resultados filtrados.
+
+### Estrategia aplicada: carga progresiva + caché
+
+1. Se carga página 1 para mostrar contenido rápido.
+2. En segundo plano se cargan el resto de páginas (`page=2...N`).
+3. Cada respuesta se añade a `allCharacters` evitando duplicados por `id`.
+4. El buscador filtra sobre `allCharacters` (no sobre la página actual).
+
+### Estado recomendado en `rick-list`
+
+- `allCharacters`: caché acumulada de toda la API.
+- `filteredCharacters`: resultado del filtro por nombre.
+- `searchTerm`: texto del buscador.
+- `currentPage` y `totalPages`: paginación sobre `filteredCharacters`.
+- `nextPageToFetch`, `hasMorePages`, `loadingAllPages`: control de carga progresiva.
+
+### Flujo de render
+
+1. `onSearch` actualiza `searchTerm` y resetea a página 1.
+2. `applySearchFilter` recalcula `filteredCharacters`.
+3. `totalPages = ceil(filteredCharacters.length / 20)`.
+4. `renderGrid` pinta solo el slice de la página actual.
+5. `renderPagination` activa/desactiva `Anterior/Siguiente`.
+
+### UX durante carga progresiva
+
+- Si hay término de búsqueda activo y todavía se están cargando páginas,
+  se muestra un aviso: “Cargando más personajes para completar la búsqueda global...”.
+- Si una carga de fondo falla, se mantiene la data ya acumulada y se muestra error.
+
+### Tradeoffs de esta estrategia
+
+- **Pros:** búsqueda global rápida tras cacheo, menos llamadas al escribir, UX coherente.
+- **Contras:** más complejidad de estado y mayor uso de memoria que búsqueda local.
+
+---
+
+## Paso 13: Feature — filtros por características con combos
+
+### Objetivo funcional
+
+Añadir filtros combinables para refinar resultados por:
+
+- Estado (`status`)
+- Especie (`species`)
+- Género (`gender`)
+
+### Diseño de UI
+
+- Se añaden 3 combos (`<select>`) encima del grid.
+- Cada combo incluye opción vacía inicial (`Todos` / `Todas`) para no filtrar ese campo.
+- Los valores de cada combo se generan dinámicamente desde `allCharacters` (dataset cacheado).
+
+### Comportamiento de filtrado
+
+1. Cada cambio en un combo dispara `onFilterChange`.
+2. Se actualizan `selectedStatus`, `selectedSpecies`, `selectedGender`.
+3. Se recalcula `filteredCharacters` aplicando:
+   - búsqueda por nombre (`searchTerm`)
+   - filtro por estado (si hay valor)
+   - filtro por especie (si hay valor)
+   - filtro por género (si hay valor)
+4. Se resetea `currentPage = 1`.
+5. La paginación sigue siendo de 20 en 20 sobre resultados filtrados.
+
+### Tradeoffs
+
+- **Pros:** filtrado más preciso, UX más guiada que inputs libres, fácil combinar criterios.
+- **Contras:** más estado interno y más lógica de sincronización de opciones con la caché.
+
+---
+
+## Paso 14: Feature — páginas separadas (Characters, Locations, Episodes) y navegación cruzada
+
+### Objetivo funcional
+
+Añadir navegación por páginas separadas dentro de la app:
+
+- Página de `Characters`
+- Página de `Locations`
+- Página de `Episodes`
+
+y mantener navegación cruzada entre entidades:
+
+- Seleccionas un **character** y se abre su modal de detalle (sin activar filtros cruzados).
+- Seleccionas una **location** y se filtran `characters` y `episodes` relacionados.
+- Seleccionas un **episode** y se filtran `characters` y `locations` relacionados.
+
+### Implementación
+
+- `rick-container` incorpora barra superior con tabs:
+  - `Personajes`
+  - `Locations`
+  - `Episodes`
+- Cada página renderiza su propio componente:
+  - `rick-list`
+  - `rick-location-list`
+  - `rick-episode-list`
+- Los componentes de locations y episodes cargan su dataset completo paginado desde API.
+- El contenedor orquesta filtros cruzados por URLs de relación y añade botón
+  `Limpiar navegación entre listas`.
+
+### Flujo de relación entre páginas
+
+1. Click en una card de cualquier página.
+2. Se emite un `CustomEvent` (`personaje-seleccionado`, `location-seleccionada`, `episode-seleccionado`).
+3. `rick-container` traduce la selección a filtros de relación.
+4. Cada lista aplica esos filtros sobre su dataset local.
+
+### Tests añadidos para la feature
+
+En `tests/rick-relations.test.ts`:
+
+- Verifica que al seleccionar un character se filtran locations/episodes relacionados.
+
+En `tests/rick-container.test.ts`:
+
+- Verifica que se puede cambiar entre páginas separadas con tabs.
+
+---
+
+## Paso 15: Testing unitario completo con Vitest
 
 ### Objetivo pedagógico
 
