@@ -7,6 +7,7 @@ import '../src/rick-list'
 const flush = async () => {
   await Promise.resolve()
   await Promise.resolve()
+  await Promise.resolve()
 }
 
 const makeResponse = (results: Character[], page: number, pages: number): ApiResponse => ({
@@ -18,6 +19,11 @@ const makeResponse = (results: Character[], page: number, pages: number): ApiRes
   },
   results
 })
+
+const makeCharacters = (count: number, startId: number, prefix: string) =>
+  Array.from({ length: count }, (_, index) =>
+    makeCharacter({ id: startId + index, name: `${prefix} ${startId + index}` })
+  )
 
 describe('Given RickList component', () => {
   beforeEach(() => {
@@ -37,10 +43,10 @@ describe('Given RickList component', () => {
     // 1) URL de fetch con page=1.
     // 2) Número de tarjetas renderizadas según resultados mock.
     // 3) Texto de paginación "Página X de Y".
-    const page1 = [makeCharacter({ id: 1, name: 'Rick' }), makeCharacter({ id: 2, name: 'Morty' })]
-    vi.mocked(fetch).mockResolvedValue({
+    const page1 = makeCharacters(20, 1, 'Rick')
+    vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
-      json: async () => makeResponse(page1, 1, 3)
+      json: async () => makeResponse(page1, 1, 1)
     } as Response)
 
     const element = document.createElement('rick-list')
@@ -48,14 +54,48 @@ describe('Given RickList component', () => {
     await flush()
 
     expect(fetch).toHaveBeenCalledWith('https://rickandmortyapi.com/api/character?page=1')
-    expect(element.querySelectorAll('rick-card')).toHaveLength(2)
-    expect(element.querySelector('#page-info')?.textContent).toBe('Página 1 de 3')
+    expect(element.querySelectorAll('rick-card')).toHaveLength(20)
+    expect(element.querySelector('#page-info')?.textContent).toBe('Página 1 de 1')
   })
 
-  test('Then avanza a la siguiente página al pulsar Siguiente', async () => {
-    const page1 = [makeCharacter({ id: 1, name: 'Rick' })]
-    const page2 = [makeCharacter({ id: 3, name: 'Summer' })]
+  test('Then avanza y retrocede páginas sobre resultados filtrados', async () => {
+    const page1 = makeCharacters(20, 1, 'Rick')
+    const page2 = makeCharacters(20, 21, 'Rick')
+    const page3 = makeCharacters(5, 41, 'Rick')
 
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeResponse(page1, 1, 3)
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeResponse(page2, 2, 3)
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeResponse(page3, 3, 3)
+      } as Response)
+
+    const element = document.createElement('rick-list')
+    document.body.appendChild(element)
+    await flush()
+    await flush()
+
+    ;(element.querySelector('#next-page') as HTMLButtonElement).click()
+    await flush()
+    ;(element.querySelector('#prev-page') as HTMLButtonElement).click()
+    await flush()
+
+    expect(fetch).toHaveBeenCalledWith('https://rickandmortyapi.com/api/character?page=2')
+    expect(fetch).toHaveBeenCalledWith('https://rickandmortyapi.com/api/character?page=3')
+    expect(element.querySelector('#page-info')?.textContent).toBe('Página 1 de 3')
+    expect(element.querySelectorAll('rick-card')).toHaveLength(20)
+  })
+
+  test('Then busca globalmente por nombre y pagina resultados filtrados', async () => {
+    const page1 = makeCharacters(20, 1, 'Rick')
+    const page2 = [makeCharacter({ id: 21, name: 'Morty Prime' }), ...makeCharacters(19, 22, 'Rick')]
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -69,18 +109,30 @@ describe('Given RickList component', () => {
     const element = document.createElement('rick-list')
     document.body.appendChild(element)
     await flush()
-
-    ;(element.querySelector('#next-page') as HTMLButtonElement).click()
     await flush()
 
-    expect(fetch).toHaveBeenLastCalledWith('https://rickandmortyapi.com/api/character?page=2')
-    expect(element.querySelector('#page-info')?.textContent).toBe('Página 2 de 2')
+    const search = element.querySelector('#search') as HTMLInputElement
+    search.value = 'morty'
+    search.dispatchEvent(new Event('input'))
+
     expect(element.querySelectorAll('rick-card')).toHaveLength(1)
+    expect(element.querySelector('#page-info')?.textContent).toBe('Página 1 de 1')
+
+    search.value = 'no-existe'
+    search.dispatchEvent(new Event('input'))
+
+    expect(element.querySelector('#empty')?.classList.contains('hidden')).toBe(false)
+    expect(element.querySelector('#grid')?.classList.contains('hidden')).toBe(true)
   })
 
-  test('Then filtra por búsqueda y muestra estado vacío cuando no hay coincidencias', async () => {
-    const page1 = [makeCharacter({ id: 1, name: 'Rick' }), makeCharacter({ id: 2, name: 'Morty' })]
-    vi.mocked(fetch).mockResolvedValue({
+  test('Then aplica filtros combinados con combos (estado, especie, género)', async () => {
+    const page1 = [
+      makeCharacter({ id: 1, name: 'Rick 1', status: 'Alive', species: 'Human', gender: 'Male' }),
+      makeCharacter({ id: 2, name: 'Morty 2', status: 'Alive', species: 'Human', gender: 'Male' }),
+      makeCharacter({ id: 3, name: 'Bird 3', status: 'Dead', species: 'Bird-Person', gender: 'Male' }),
+      makeCharacter({ id: 4, name: 'Summer 4', status: 'Alive', species: 'Human', gender: 'Female' })
+    ]
+    vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       json: async () => makeResponse(page1, 1, 1)
     } as Response)
@@ -89,16 +141,19 @@ describe('Given RickList component', () => {
     document.body.appendChild(element)
     await flush()
 
-    const search = element.querySelector('#search') as HTMLInputElement
-    search.value = 'morty'
-    search.dispatchEvent(new Event('input'))
+    const status = element.querySelector('#filter-status') as HTMLSelectElement
+    const species = element.querySelector('#filter-species') as HTMLSelectElement
+    const gender = element.querySelector('#filter-gender') as HTMLSelectElement
 
-    expect(element.querySelectorAll('rick-card')).toHaveLength(1)
+    status.value = 'Alive'
+    status.dispatchEvent(new Event('change'))
+    species.value = 'Human'
+    species.dispatchEvent(new Event('change'))
+    gender.value = 'Female'
+    gender.dispatchEvent(new Event('change'))
 
-    search.value = 'no-existe'
-    search.dispatchEvent(new Event('input'))
-
-    expect(element.querySelector('#empty')?.classList.contains('hidden')).toBe(false)
-    expect(element.querySelector('#grid')?.classList.contains('hidden')).toBe(true)
+    const cards = element.querySelectorAll('rick-card')
+    expect(cards).toHaveLength(1)
+    expect(element.querySelector('#page-info')?.textContent).toBe('Página 1 de 1')
   })
 })

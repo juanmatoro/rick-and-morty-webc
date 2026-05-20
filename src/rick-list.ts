@@ -23,6 +23,31 @@ template.innerHTML = `
         />
       </div>
 
+      <div class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <label class="text-sm text-gray-300">
+          Estado
+          <select id="filter-status" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
+            <option value="">Todos</option>
+          </select>
+        </label>
+        <label class="text-sm text-gray-300">
+          Especie
+          <select id="filter-species" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
+            <option value="">Todas</option>
+          </select>
+        </label>
+        <label class="text-sm text-gray-300">
+          Género
+          <select id="filter-gender" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
+            <option value="">Todos</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="search-progress" class="hidden text-center mb-6">
+        <p class="text-cyan-300 text-sm">Cargando más personajes para completar la búsqueda global...</p>
+      </div>
+
       <div id="loading" class="text-center py-20">
         <div class="inline-block w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
         <p class="text-gray-400 mt-4">Loading characters...</p>
@@ -58,73 +83,219 @@ template.innerHTML = `
 `
 
 export class RickList extends HTMLElement {
-  private characters: Character[] = []
+  private allCharacters: Character[] = []
   private filteredCharacters: Character[] = []
   private searchTerm = ''
   private currentPage = 1
   private totalPages = 1
+  private readonly pageSize = 20
+  private nextPageToFetch = 1
+  private hasMorePages = true
+  private loadingAllPages = false
+  private selectedStatus = ''
+  private selectedSpecies = ''
+  private selectedGender = ''
+  private relationCharacterUrls: string[] = []
+  private relationLocationUrls: string[] = []
+  private relationEpisodeUrls: string[] = []
 
   constructor() {
     super()
     this.appendChild(template.content.cloneNode(true))
   }
 
+  set filterCharacterUrls(urls: string[]) {
+    this.relationCharacterUrls = urls
+    this.currentPage = 1
+    this.applySearchFilter()
+    this.render()
+  }
+
+  set filterLocationUrls(urls: string[]) {
+    this.relationLocationUrls = urls
+    this.currentPage = 1
+    this.applySearchFilter()
+    this.render()
+  }
+
+  set filterEpisodeUrls(urls: string[]) {
+    this.relationEpisodeUrls = urls
+    this.currentPage = 1
+    this.applySearchFilter()
+    this.render()
+  }
+
   connectedCallback() {
     this.querySelector('#search')?.addEventListener('input', this.onSearch)
+    this.querySelector('#filter-status')?.addEventListener('change', this.onFilterChange)
+    this.querySelector('#filter-species')?.addEventListener('change', this.onFilterChange)
+    this.querySelector('#filter-gender')?.addEventListener('change', this.onFilterChange)
     this.querySelector('#prev-page')?.addEventListener('click', this.onPrevPage)
     this.querySelector('#next-page')?.addEventListener('click', this.onNextPage)
-    this.loadPage(1)
+    this.loadInitialAndStartBackgroundFetch()
   }
 
   disconnectedCallback() {
     this.querySelector('#search')?.removeEventListener('input', this.onSearch)
+    this.querySelector('#filter-status')?.removeEventListener('change', this.onFilterChange)
+    this.querySelector('#filter-species')?.removeEventListener('change', this.onFilterChange)
+    this.querySelector('#filter-gender')?.removeEventListener('change', this.onFilterChange)
     this.querySelector('#prev-page')?.removeEventListener('click', this.onPrevPage)
     this.querySelector('#next-page')?.removeEventListener('click', this.onNextPage)
   }
 
   private onSearch = (e: Event) => {
     this.searchTerm = (e.target as HTMLInputElement).value.trim().toLowerCase()
+    this.currentPage = 1
     this.applySearchFilter()
-    this.renderGrid()
+    this.render()
+  }
+
+  private onFilterChange = () => {
+    this.selectedStatus = (this.querySelector('#filter-status') as HTMLSelectElement).value
+    this.selectedSpecies = (this.querySelector('#filter-species') as HTMLSelectElement).value
+    this.selectedGender = (this.querySelector('#filter-gender') as HTMLSelectElement).value
+    this.currentPage = 1
+    this.applySearchFilter()
+    this.render()
   }
 
   private onPrevPage = () => {
     if (this.currentPage > 1) {
-      this.loadPage(this.currentPage - 1)
+      this.currentPage -= 1
+      this.render()
     }
   }
 
   private onNextPage = () => {
     if (this.currentPage < this.totalPages) {
-      this.loadPage(this.currentPage + 1)
+      this.currentPage += 1
+      this.render()
     }
   }
 
-  private async loadPage(page: number) {
+  private async loadInitialAndStartBackgroundFetch() {
     try {
       this.showLoading(true)
-      const res = await fetch(`https://rickandmortyapi.com/api/character?page=${page}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: ApiResponse = await res.json()
-      this.currentPage = page
-      this.totalPages = data.info.pages
-      this.characters = data.results
+      const data = await this.fetchPage(1)
+      this.nextPageToFetch = 2
+      this.hasMorePages = data.info.next !== null
+      this.mergeCharacters(data.results)
+      this.renderFilterOptions()
       this.applySearchFilter()
-      this.renderGrid()
-      this.renderPagination()
+      this.render()
+      this.fetchRemainingPagesInBackground()
     } catch (err) {
-      const errorEl = this.querySelector('#error') as HTMLElement
-      const msgEl = errorEl.querySelector('p')!
-      msgEl.textContent = err instanceof Error ? err.message : 'Unknown error'
-      this.showLoading(false)
-      errorEl.classList.remove('hidden')
+      this.handleError(err)
+    }
+  }
+
+  private async fetchRemainingPagesInBackground() {
+    if (this.loadingAllPages) return
+    this.loadingAllPages = true
+    this.toggleSearchProgress(true)
+
+    try {
+      while (this.hasMorePages) {
+        const data = await this.fetchPage(this.nextPageToFetch)
+        this.nextPageToFetch += 1
+        this.hasMorePages = data.info.next !== null
+        this.mergeCharacters(data.results)
+        this.renderFilterOptions()
+        this.applySearchFilter()
+        this.render()
+      }
+    } catch (err) {
+      this.handleError(err, false)
+    } finally {
+      this.loadingAllPages = false
+      this.toggleSearchProgress(false)
+    }
+  }
+
+  private async fetchPage(page: number): Promise<ApiResponse> {
+    const res = await fetch(`https://rickandmortyapi.com/api/character?page=${page}`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data: ApiResponse = await res.json()
+    return data
+  }
+
+  private mergeCharacters(characters: Character[]) {
+    const knownIds = new Set(this.allCharacters.map((character) => character.id))
+    for (const character of characters) {
+      if (!knownIds.has(character.id)) {
+        this.allCharacters.push(character)
+      }
     }
   }
 
   private applySearchFilter() {
-    this.filteredCharacters = this.characters.filter((character) =>
-      character.name.toLowerCase().includes(this.searchTerm)
-    )
+    this.filteredCharacters = this.allCharacters.filter((character) => {
+      const matchesName = character.name.toLowerCase().includes(this.searchTerm)
+      const matchesStatus = this.selectedStatus ? character.status === this.selectedStatus : true
+      const matchesSpecies = this.selectedSpecies ? character.species === this.selectedSpecies : true
+      const matchesGender = this.selectedGender ? character.gender === this.selectedGender : true
+      const matchesRelationCharacter = this.relationCharacterUrls.length
+        ? this.relationCharacterUrls.includes(character.url)
+        : true
+      const matchesRelationLocation = this.relationLocationUrls.length
+        ? this.relationLocationUrls.includes(character.location.url) || this.relationLocationUrls.includes(character.origin.url)
+        : true
+      const matchesRelationEpisode = this.relationEpisodeUrls.length
+        ? character.episode.some((episodeUrl) => this.relationEpisodeUrls.includes(episodeUrl))
+        : true
+      return matchesName
+        && matchesStatus
+        && matchesSpecies
+        && matchesGender
+        && matchesRelationCharacter
+        && matchesRelationLocation
+        && matchesRelationEpisode
+    })
+    this.totalPages = Math.max(1, Math.ceil(this.filteredCharacters.length / this.pageSize))
+    if (this.currentPage > this.totalPages) {
+      this.currentPage = this.totalPages
+    }
+  }
+
+  private renderFilterOptions() {
+    const statusSelect = this.querySelector('#filter-status') as HTMLSelectElement
+    const speciesSelect = this.querySelector('#filter-species') as HTMLSelectElement
+    const genderSelect = this.querySelector('#filter-gender') as HTMLSelectElement
+
+    this.setSelectOptions(statusSelect, [...new Set(this.allCharacters.map((character) => character.status))], 'Todos')
+    this.setSelectOptions(speciesSelect, [...new Set(this.allCharacters.map((character) => character.species))], 'Todas')
+    this.setSelectOptions(genderSelect, [...new Set(this.allCharacters.map((character) => character.gender))], 'Todos')
+
+    statusSelect.value = this.selectedStatus
+    speciesSelect.value = this.selectedSpecies
+    genderSelect.value = this.selectedGender
+  }
+
+  private setSelectOptions(select: HTMLSelectElement, values: string[], allLabel: string) {
+    const currentValue = select.value
+    const uniqueSorted = values.filter(Boolean).sort((a, b) => a.localeCompare(b))
+
+    select.innerHTML = ''
+    const allOption = document.createElement('option')
+    allOption.value = ''
+    allOption.textContent = allLabel
+    select.appendChild(allOption)
+
+    for (const value of uniqueSorted) {
+      const option = document.createElement('option')
+      option.value = value
+      option.textContent = value
+      select.appendChild(option)
+    }
+
+    select.value = currentValue
+  }
+
+  private getVisibleCharacters() {
+    const start = (this.currentPage - 1) * this.pageSize
+    const end = start + this.pageSize
+    return this.filteredCharacters.slice(start, end)
   }
 
   private showLoading(isLoading: boolean) {
@@ -143,6 +314,31 @@ export class RickList extends HTMLElement {
     }
   }
 
+  private toggleSearchProgress(isVisible: boolean) {
+    const progress = this.querySelector('#search-progress') as HTMLElement
+    if (!this.searchTerm) {
+      progress.classList.add('hidden')
+      return
+    }
+
+    progress.classList.toggle('hidden', !isVisible)
+  }
+
+  private handleError(err: unknown, clearLoading = true) {
+    const errorEl = this.querySelector('#error') as HTMLElement
+    const msgEl = errorEl.querySelector('p')!
+    msgEl.textContent = err instanceof Error ? err.message : 'Unknown error'
+    if (clearLoading) {
+      this.showLoading(false)
+    }
+    errorEl.classList.remove('hidden')
+  }
+
+  private render() {
+    this.renderGrid()
+    this.renderPagination()
+  }
+
   private renderGrid() {
     this.showLoading(false)
 
@@ -159,7 +355,7 @@ export class RickList extends HTMLElement {
     empty.classList.add('hidden')
     grid.classList.remove('hidden')
 
-    for (const char of this.filteredCharacters) {
+    for (const char of this.getVisibleCharacters()) {
       const card = new RickCard()
       card.character = char
       grid.appendChild(card)
