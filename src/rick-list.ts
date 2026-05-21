@@ -1,5 +1,6 @@
 import { RickCard } from './rick-card.js'
 import type { Character, ApiResponse } from './types'
+import { t } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
@@ -10,47 +11,47 @@ template.innerHTML = `
           Rick &amp; Morty
         </h1>
 
-        <p class="text-gray-400 mt-2 text-lg">Haz clic en un personaje para ver sus detalles</p>
+        <p class="text-gray-400 mt-2 text-lg"><span id="char-subtitle"></span></p>
       </header>
 
       <div class="mb-8">
-        <label for="search" class="sr-only">Buscar personaje</label>
+        <label for="search" class="sr-only"><span id="char-search-label"></span></label>
         <input
           id="search"
           type="search"
-          placeholder="Buscar personaje por nombre..."
+          placeholder=""
           class="w-full md:w-96 mx-auto block rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-400"
         />
       </div>
 
       <div class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
         <label class="text-sm text-gray-300">
-          Estado
+          <span id="char-filter-status"></span>
           <select id="filter-status" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
-            <option value="">Todos</option>
+            <option value=""></option>
           </select>
         </label>
         <label class="text-sm text-gray-300">
-          Especie
+          <span id="char-filter-species"></span>
           <select id="filter-species" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
-            <option value="">Todas</option>
+            <option value=""></option>
           </select>
         </label>
         <label class="text-sm text-gray-300">
-          Género
+          <span id="char-filter-gender"></span>
           <select id="filter-gender" class="mt-1 w-full rounded-xl border border-gray-600 bg-gray-800 text-gray-100 px-3 py-2">
-            <option value="">Todos</option>
+            <option value=""></option>
           </select>
         </label>
       </div>
 
       <div id="search-progress" class="hidden text-center mb-6">
-        <p class="text-cyan-300 text-sm">Cargando más personajes para completar la búsqueda global...</p>
+        <p class="text-cyan-300 text-sm"><span id="char-search-progress-text"></span></p>
       </div>
 
       <div id="loading" class="text-center py-20">
         <div class="inline-block w-12 h-12 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-gray-400 mt-4">Loading characters...</p>
+        <p class="text-gray-400 mt-4"><span id="char-loading-text"></span></p>
       </div>
 
       <div id="error" class="hidden text-center py-20">
@@ -58,7 +59,7 @@ template.innerHTML = `
       </div>
 
       <div id="empty" class="hidden text-center py-10">
-        <p class="text-gray-300 text-lg">No se encontraron personajes para esa búsqueda.</p>
+        <p class="text-gray-300 text-lg"><span id="char-empty-text"></span></p>
       </div>
 
       <div id="grid" class="hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"></div>
@@ -68,14 +69,14 @@ template.innerHTML = `
           id="prev-page"
           class="px-4 py-2 rounded-lg border border-gray-500 text-gray-200 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Anterior
+          <span id="char-prev-text"></span>
         </button>
         <span id="page-info" class="text-gray-300 font-medium"></span>
         <button
           id="next-page"
           class="px-4 py-2 rounded-lg border border-gray-500 text-gray-200 hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Siguiente
+          <span id="char-next-text"></span>
         </button>
       </div>
     </div>
@@ -132,7 +133,9 @@ export class RickList extends HTMLElement {
     this.querySelector('#filter-gender')?.addEventListener('change', this.onFilterChange)
     this.querySelector('#prev-page')?.addEventListener('click', this.onPrevPage)
     this.querySelector('#next-page')?.addEventListener('click', this.onNextPage)
+    this.updateLocaleStrings()
     this.loadInitialAndStartBackgroundFetch()
+    window.addEventListener('language-changed', this.onLanguageChanged)
   }
 
   disconnectedCallback() {
@@ -142,6 +145,30 @@ export class RickList extends HTMLElement {
     this.querySelector('#filter-gender')?.removeEventListener('change', this.onFilterChange)
     this.querySelector('#prev-page')?.removeEventListener('click', this.onPrevPage)
     this.querySelector('#next-page')?.removeEventListener('click', this.onNextPage)
+    window.removeEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocaleStrings()
+    this.renderFilterOptions()
+    this.applySearchFilter()
+    this.render()
+  }
+
+  private updateLocaleStrings() {
+    const el = (id: string) => this.querySelector(`#${id}`)
+    el('char-subtitle')!.textContent = t('char.subtitle')
+    el('char-search-label')!.textContent = t('char.search.label')
+    const searchInput = this.querySelector('#search') as HTMLInputElement
+    if (searchInput) searchInput.placeholder = t('char.search.placeholder')
+    el('char-filter-status')!.textContent = t('char.filter.status')
+    el('char-filter-species')!.textContent = t('char.filter.species')
+    el('char-filter-gender')!.textContent = t('char.filter.gender')
+    el('char-search-progress-text')!.textContent = t('char.search.progress')
+    el('char-loading-text')!.textContent = t('char.loading')
+    el('char-empty-text')!.textContent = t('char.empty')
+    el('char-prev-text')!.textContent = t('char.prev')
+    el('char-next-text')!.textContent = t('char.next')
   }
 
   private onSearch = (e: Event) => {
@@ -263,9 +290,9 @@ export class RickList extends HTMLElement {
     const speciesSelect = this.querySelector('#filter-species') as HTMLSelectElement
     const genderSelect = this.querySelector('#filter-gender') as HTMLSelectElement
 
-    this.setSelectOptions(statusSelect, [...new Set(this.allCharacters.map((character) => character.status))], 'Todos')
-    this.setSelectOptions(speciesSelect, [...new Set(this.allCharacters.map((character) => character.species))], 'Todas')
-    this.setSelectOptions(genderSelect, [...new Set(this.allCharacters.map((character) => character.gender))], 'Todos')
+    this.setSelectOptions(statusSelect, [...new Set(this.allCharacters.map((character) => character.status))], t('char.filter.all'))
+    this.setSelectOptions(speciesSelect, [...new Set(this.allCharacters.map((character) => character.species))], t('char.filter.all'))
+    this.setSelectOptions(genderSelect, [...new Set(this.allCharacters.map((character) => character.gender))], t('char.filter.all'))
 
     statusSelect.value = this.selectedStatus
     speciesSelect.value = this.selectedSpecies
@@ -369,7 +396,7 @@ export class RickList extends HTMLElement {
     const nextButton = this.querySelector('#next-page') as HTMLButtonElement
 
     pagination.classList.remove('hidden')
-    pageInfo.textContent = `Página ${this.currentPage} de ${this.totalPages}`
+    pageInfo.textContent = `${t('char.page')} ${this.currentPage} ${t('char.of')} ${this.totalPages}`
     prevButton.disabled = this.currentPage === 1
     nextButton.disabled = this.currentPage === this.totalPages
   }

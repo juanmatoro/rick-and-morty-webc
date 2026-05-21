@@ -1,4 +1,5 @@
 import type { Character } from './types'
+import { t } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
@@ -7,12 +8,12 @@ template.innerHTML = `
     <h2 class="text-2xl font-bold text-gray-800 mt-4"></h2>
     <span class="inline-block px-3 py-1 rounded-full text-sm font-semibold mt-2"></span>
     <div class="w-full mt-6 space-y-3 text-gray-700">
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Species:</span> <span id="species"></span></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Gender:</span> <span id="gender"></span></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Origin:</span> <button id="origin-link" class="text-cyan-700 hover:underline text-right"></button></p>
-      <p class="flex justify-between border-b pb-1"><span class="font-medium">Location:</span> <button id="location-link" class="text-cyan-700 hover:underline text-right"></button></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium" id="detail-species-label"></span> <span id="species"></span></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium" id="detail-gender-label"></span> <span id="gender"></span></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium" id="detail-origin-label"></span> <button id="origin-link" class="text-cyan-700 hover:underline text-right"></button></p>
+      <p class="flex justify-between border-b pb-1"><span class="font-medium" id="detail-location-label"></span> <button id="location-link" class="text-cyan-700 hover:underline text-right"></button></p>
       <div class="border-b pb-2">
-        <span class="font-medium">Episodes:</span>
+        <span class="font-medium" id="detail-episodes-label"></span>
         <ul id="episodes-list" class="mt-2 space-y-1"></ul>
       </div>
     </div>
@@ -33,9 +34,31 @@ export class RickDetail extends HTMLElement {
     this.render()
   }
 
+  connectedCallback() {
+    this.updateLocaleStrings()
+    window.addEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocaleStrings()
+    if (this.characterData) this.render()
+  }
+
+  private updateLocaleStrings() {
+    this.querySelector('#detail-species-label')!.textContent = t('detail.species')
+    this.querySelector('#detail-gender-label')!.textContent = t('detail.gender')
+    this.querySelector('#detail-origin-label')!.textContent = t('detail.origin')
+    this.querySelector('#detail-location-label')!.textContent = t('detail.location')
+    this.querySelector('#detail-episodes-label')!.textContent = t('detail.episodes')
+  }
+
   private render() {
     if (!this.characterData) {
-      this.querySelector('h2')!.textContent = 'No character selected'
+      this.querySelector('h2')!.textContent = t('detail.none')
       this.querySelector('img')!.style.display = 'none'
       ;(this.querySelector('#episodes-list') as HTMLElement).innerHTML = ''
       return
@@ -74,7 +97,7 @@ export class RickDetail extends HTMLElement {
 
   private async renderEpisodes(episodeUrls: string[]) {
     const episodesList = this.querySelector('#episodes-list') as HTMLElement
-    episodesList.innerHTML = '<li class="text-gray-500 text-sm">Loading episodes...</li>'
+    episodesList.innerHTML = `<li class="text-gray-500 text-sm">${t('detail.episodes.loading')}</li>`
     const token = ++this.episodeRequestToken
 
     try {
@@ -104,7 +127,7 @@ export class RickDetail extends HTMLElement {
         const seasonEpisodes = seasonMap.get(season)!
         const seasonLi = document.createElement('li')
         seasonLi.className = `text-xs font-semibold text-gray-500 uppercase tracking-wider ${i === 0 ? '' : 'mt-3'}`
-        seasonLi.textContent = `Temporada ${season}`
+        seasonLi.textContent = `${t('ep.season')} ${season}`
         episodesList.appendChild(seasonLi)
 
         for (const episode of seasonEpisodes) {
@@ -128,7 +151,7 @@ export class RickDetail extends HTMLElement {
       }
     } catch {
       if (token !== this.episodeRequestToken) return
-      episodesList.innerHTML = '<li class="text-red-600 text-sm">Could not load episodes.</li>'
+      episodesList.innerHTML = `<li class="text-red-600 text-sm">${t('detail.episodes.error')}</li>`
     }
   }
 

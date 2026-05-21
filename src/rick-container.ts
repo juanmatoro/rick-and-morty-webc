@@ -6,18 +6,23 @@ import type { Character, Episode, Location } from './types'
 import type { SeasonMeta } from './justwatch-data.js'
 import type { RickModal } from './rick-modal.js'
 import type { RickList } from './rick-list.js'
+import { getLang, setLang } from './lang.js'
+import { t } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
   <div class="bg-gray-950 border-b border-gray-800 px-4 py-3 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto flex flex-wrap gap-2 items-center justify-between">
       <div class="flex flex-wrap gap-2">
-        <button data-page-btn="characters" class="page-btn text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600">Personajes</button>
-        <button data-page-btn="locations" class="page-btn text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600">Locations</button>
-        <button data-page-btn="episodes" class="page-btn text-sm bg-cyan-700 text-white px-3 py-2 rounded-lg border border-cyan-500">Episodes</button>
+        <button data-page-btn="characters" class="page-btn text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600"><span id="nav-characters"></span></button>
+        <button data-page-btn="locations" class="page-btn text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600"><span id="nav-locations"></span></button>
+        <button data-page-btn="episodes" class="page-btn text-sm bg-cyan-700 text-white px-3 py-2 rounded-lg border border-cyan-500"><span id="nav-episodes"></span></button>
       </div>
       <button id="clear-relations" class="text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600">
-        Limpiar navegación entre listas
+        <span id="nav-clear"></span>
+      </button>
+      <button id="lang-toggle" class="text-sm bg-gray-800 hover:bg-gray-700 text-gray-100 px-3 py-2 rounded-lg border border-gray-600">
+        ES
       </button>
     </div>
   </div>
@@ -45,6 +50,10 @@ export class RickContainer extends HTMLElement {
     this.addEventListener('episode-detalle', this.onEpisodeDetail)
     this.addEventListener('modal-cerrar', this.onModalClose)
     this.querySelector('#clear-relations')?.addEventListener('click', this.clearRelations)
+    this.querySelector('#lang-toggle')?.addEventListener('click', this.onLangToggle)
+    this.updateLocale()
+    this.updateLangButton()
+    window.addEventListener('language-changed', this.onLanguageChanged)
     this.querySelectorAll('.page-btn').forEach((button) =>
       button.addEventListener('click', this.onPageChange)
     )
@@ -60,6 +69,8 @@ export class RickContainer extends HTMLElement {
     this.removeEventListener('episode-detalle', this.onEpisodeDetail)
     this.removeEventListener('modal-cerrar', this.onModalClose)
     this.querySelector('#clear-relations')?.removeEventListener('click', this.clearRelations)
+    this.querySelector('#lang-toggle')?.removeEventListener('click', this.onLangToggle)
+    window.removeEventListener('language-changed', this.onLanguageChanged)
     this.querySelectorAll('.page-btn').forEach((button) =>
       button.removeEventListener('click', this.onPageChange)
     )
@@ -131,6 +142,30 @@ export class RickContainer extends HTMLElement {
 
   private clearRelations = () => {
     this.setCrossFilters({ characterUrls: [], locationUrls: [], episodeUrls: [] })
+  }
+
+  private onLangToggle = () => {
+    const next = getLang() === 'es' ? 'en' : 'es'
+    setLang(next)
+    this.updateLangButton()
+  }
+
+  private updateLangButton() {
+    const btn = this.querySelector('#lang-toggle') as HTMLButtonElement
+    if (btn) btn.textContent = getLang() === 'es' ? 'ES' : 'EN'
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocale()
+    this.updateLangButton()
+  }
+
+  private updateLocale() {
+    const el = (id: string) => this.querySelector(`#${id}`)
+    el('nav-characters')!.textContent = t('nav.characters')
+    el('nav-locations')!.textContent = t('nav.locations')
+    el('nav-episodes')!.textContent = t('nav.episodes')
+    el('nav-clear')!.textContent = t('nav.clear')
   }
 
   private onPageChange = (event: Event) => {

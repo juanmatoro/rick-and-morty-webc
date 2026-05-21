@@ -1,16 +1,18 @@
 import type { ApiResponse, Episode } from './types'
-import { SEASONS, MISSING_EPISODES } from './justwatch-data.js'
+import { MISSING_EPISODES, SPANISH_TITLES, ENGLISH_TITLES } from './justwatch-data.js'
+import { getLang } from './lang.js'
+import { t, getSeasons } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
   <section class="min-h-[40vh] bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 py-10 px-4 border-t border-gray-800">
     <div class="max-w-7xl mx-auto">
       <header class="mb-6">
-        <h2 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-pink-400">Episodes</h2>
-        <p class="text-gray-400 mt-1">Haz clic en un episodio para filtrar personajes y localizaciones relacionadas.</p>
+        <h2 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-pink-400"><span id="ep-title"></span></h2>
+        <p class="text-gray-400 mt-1"><span id="ep-subtitle"></span></p>
       </header>
-      <div id="loading-episodes" class="text-gray-400 py-8">Loading episodes...</div>
-      <div id="empty-episodes" class="hidden text-gray-300 py-8">No hay episodios para los filtros actuales.</div>
+      <div id="loading-episodes" class="text-gray-400 py-8"></div>
+      <div id="empty-episodes" class="hidden text-gray-300 py-8"></div>
       <div id="seasons-root" class="hidden space-y-4"></div>
     </div>
   </section>
@@ -41,7 +43,39 @@ export class RickEpisodeList extends HTMLElement {
   }
 
   connectedCallback() {
+    this.updateLocaleStrings()
     this.fetchAllEpisodes()
+    window.addEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocaleStrings()
+    this.applyLanguageTitles()
+    this.applyFilters()
+    this.render()
+  }
+
+  private updateLocaleStrings() {
+    const el = (id: string) => this.querySelector(`#${id}`)
+    el('ep-title')!.textContent = t('ep.title')
+    el('ep-subtitle')!.textContent = t('ep.subtitle')
+    const loading = this.querySelector('#loading-episodes') as HTMLElement
+    loading.textContent = t('ep.loading')
+    const empty = this.querySelector('#empty-episodes') as HTMLElement
+    empty.textContent = t('ep.empty')
+  }
+
+  private applyLanguageTitles() {
+    const lang = getLang()
+    const map = lang === 'es' ? SPANISH_TITLES : ENGLISH_TITLES
+    for (const ep of this.allEpisodes) {
+      const title = map[ep.episode]
+      if (title) ep.name = title
+    }
   }
 
   private async fetchAllEpisodes() {
@@ -58,6 +92,7 @@ export class RickEpisodeList extends HTMLElement {
         page += 1
       }
       this.allEpisodes = [...acc, ...MISSING_EPISODES]
+      this.applyLanguageTitles()
       this.applyFilters()
       this.render()
     } catch {
@@ -110,7 +145,7 @@ export class RickEpisodeList extends HTMLElement {
 
     for (const seasonNum of sortedSeasons) {
       const episodes = seasonMap.get(seasonNum)!
-      const meta = SEASONS.find(s => s.season === seasonNum)
+      const meta = getSeasons().find(s => s.season === seasonNum)
       const isOpen = this.openSeasons.has(seasonNum)
 
       const section = document.createElement('div')
@@ -122,9 +157,9 @@ export class RickEpisodeList extends HTMLElement {
       header.innerHTML = `
         <div class="flex items-center gap-4">
           <span class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-            Temporada ${seasonNum}
+            ${t('ep.season')} ${seasonNum}
           </span>
-          <span class="text-sm text-gray-400">${episodes.length} episodios</span>
+          <span class="text-sm text-gray-400">${episodes.length} ${t('ep.episodes')}</span>
         </div>
         <svg class="w-5 h-5 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}"
              fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -148,7 +183,7 @@ export class RickEpisodeList extends HTMLElement {
         const infoRow = document.createElement('div')
         infoRow.className = 'flex flex-col md:flex-row gap-5 p-5 bg-gray-800/40'
         infoRow.innerHTML = `
-          <img src="${meta.poster}" alt="Temporada ${seasonNum}"
+          <img src="${meta.poster}" alt="${t('ep.season')} ${seasonNum}"
                class="w-32 md:w-36 rounded-lg shadow-md object-cover flex-shrink-0"
                onerror="this.style.display='none'">
           <div class="flex-1 min-w-0">
@@ -157,11 +192,11 @@ export class RickEpisodeList extends HTMLElement {
               <span>📅 ${meta.year}</span>
               <span>🎬 ${meta.genres}</span>
               <span>⏱ ${meta.duration}</span>
-              <span>🌎 Estados Unidos</span>
+              <span>🌎 ${t('ep.country')}</span>
             </div>
             <a href="${meta.trailerUrl}" target="_blank" rel="noopener noreferrer"
                class="inline-block mt-3 text-xs text-cyan-400 hover:text-cyan-300 underline">
-              ▶ Ver tráiler
+              ▶ ${t('ep.trailer')}
             </a>
           </div>
         `
@@ -183,7 +218,7 @@ export class RickEpisodeList extends HTMLElement {
           <a href="https://www.justwatch.com/es/serie/rick-and-morty/temporada-${seasonNum}"
              target="_blank" rel="noopener noreferrer"
              class="inline-block mt-2 text-xs text-cyan-400 hover:text-cyan-300 underline">
-            Ver en JustWatch →
+             ${t('ep.justwatch')}
           </a>
         `
         const btn = card.querySelector('button')!

@@ -1,5 +1,6 @@
 import type { Episode, Character } from './types'
 import type { SeasonMeta } from './justwatch-data.js'
+import { t } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
@@ -10,33 +11,32 @@ template.innerHTML = `
     <p id="episode-air-date" class="text-xs text-gray-400 mt-1"></p>
     <div class="w-full mt-6 space-y-3">
       <p class="flex justify-between border-b border-gray-700 pb-1">
-        <span class="font-medium text-gray-300">Season:</span>
+        <span class="font-medium text-gray-300" id="epdetail-season-label"></span>
         <span id="season-number" class="text-gray-100"></span>
       </p>
       <p class="flex justify-between border-b border-gray-700 pb-1">
-        <span class="font-medium text-gray-300">Year:</span>
+        <span class="font-medium text-gray-300" id="epdetail-year-label"></span>
         <span id="episode-year" class="text-gray-100"></span>
       </p>
       <p class="flex justify-between border-b border-gray-700 pb-1">
-        <span class="font-medium text-gray-300">Duration:</span>
+        <span class="font-medium text-gray-300" id="epdetail-duration-label"></span>
         <span id="episode-duration" class="text-gray-100"></span>
       </p>
       <p class="flex justify-between border-b border-gray-700 pb-1">
-        <span class="font-medium text-gray-300">Genre:</span>
+        <span class="font-medium text-gray-300" id="epdetail-genre-label"></span>
         <span id="episode-genre" class="text-gray-100"></span>
       </p>
       <div class="border-b border-gray-700 pb-2">
-        <p class="font-medium text-gray-300 mb-2">Synopsis</p>
+        <p class="font-medium text-gray-300 mb-2" id="epdetail-synopsis-label"></p>
         <p id="episode-synopsis" class="text-sm text-gray-400 leading-relaxed"></p>
       </div>
       <div class="pb-2">
-        <span class="font-medium text-gray-300">Characters:</span>
+        <span class="font-medium text-gray-300" id="epdetail-characters-label"></span>
         <ul id="characters-list" class="mt-2 space-y-1"></ul>
       </div>
     </div>
     <a id="justwatch-link" target="_blank" rel="noopener noreferrer"
        class="mt-4 text-xs text-cyan-400 hover:text-cyan-300 underline">
-      Ver en JustWatch →
     </a>
   </div>
 `
@@ -60,9 +60,40 @@ export class RickEpisodeDetail extends HTMLElement {
     this.seasonMetaData = data
   }
 
+  connectedCallback() {
+    this.updateLocaleStrings()
+    window.addEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocaleStrings()
+    if (this.episodeData) this.renderCharacterLabels()
+  }
+
+  private updateLocaleStrings() {
+    this.querySelector('#epdetail-season-label')!.textContent = t('epdetail.season')
+    this.querySelector('#epdetail-year-label')!.textContent = t('epdetail.year')
+    this.querySelector('#epdetail-duration-label')!.textContent = t('epdetail.duration')
+    this.querySelector('#epdetail-genre-label')!.textContent = t('epdetail.genre')
+    this.querySelector('#epdetail-synopsis-label')!.textContent = t('epdetail.synopsis')
+    this.querySelector('#epdetail-characters-label')!.textContent = t('epdetail.characters')
+    this.querySelector('#justwatch-link')!.textContent = t('epdetail.justwatch')
+  }
+
+  private renderCharacterLabels() {
+    const list = this.querySelector('#characters-list') as HTMLElement
+    if (this.episodeData && this.episodeData.characters.length === 0) {
+      list.innerHTML = `<li class="text-gray-500 text-sm">${t('epdetail.characters.empty')}</li>`
+    }
+  }
+
   private render() {
     if (!this.episodeData) {
-      this.querySelector('h2')!.textContent = 'No episode selected'
+      this.querySelector('h2')!.textContent = t('epdetail.none')
       this.querySelector('img')!.style.display = 'none'
       return
     }
@@ -74,8 +105,8 @@ export class RickEpisodeDetail extends HTMLElement {
     if (meta) {
       img.style.display = 'block'
       img.src = meta.poster
-      img.alt = `Temporada ${meta.season}`
-      this.querySelector('#season-number')!.textContent = `Temporada ${meta.season}`
+      img.alt = `${t('ep.season')} ${meta.season}`
+      this.querySelector('#season-number')!.textContent = `${t('ep.season')} ${meta.season}`
       this.querySelector('#episode-year')!.textContent = meta.year
       this.querySelector('#episode-duration')!.textContent = meta.duration
       this.querySelector('#episode-genre')!.textContent = meta.genres
@@ -102,10 +133,10 @@ export class RickEpisodeDetail extends HTMLElement {
 
   private async renderCharacters(characterUrls: string[]) {
     const list = this.querySelector('#characters-list') as HTMLElement
-    list.innerHTML = '<li class="text-gray-500 text-sm">Loading characters...</li>'
+    list.innerHTML = `<li class="text-gray-500 text-sm">${t('epdetail.characters.loading')}</li>`
 
     if (characterUrls.length === 0) {
-      list.innerHTML = '<li class="text-gray-500 text-sm">No character data available.</li>'
+      list.innerHTML = `<li class="text-gray-500 text-sm">${t('epdetail.characters.empty')}</li>`
       return
     }
 
@@ -151,7 +182,7 @@ export class RickEpisodeDetail extends HTMLElement {
       }
     } catch {
       if (token !== this.characterRequestToken) return
-      list.innerHTML = '<li class="text-red-600 text-sm">Could not load characters.</li>'
+      list.innerHTML = `<li class="text-red-600 text-sm">${t('epdetail.characters.error')}</li>`
     }
   }
 

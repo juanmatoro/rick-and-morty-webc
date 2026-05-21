@@ -1,15 +1,16 @@
 import type { ApiResponse, Location } from './types'
+import { t } from './locale.js'
 
 const template = document.createElement('template')
 template.innerHTML = `
   <section class="min-h-[40vh] bg-gradient-to-b from-gray-900 via-gray-800 to-gray-900 py-10 px-4 border-t border-gray-800">
     <div class="max-w-7xl mx-auto">
       <header class="mb-6">
-        <h2 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-cyan-300">Locations</h2>
-        <p class="text-gray-400 mt-1">Haz clic en una localización para filtrar personajes y episodios relacionados.</p>
+        <h2 class="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-cyan-300"><span id="loc-title"></span></h2>
+        <p class="text-gray-400 mt-1"><span id="loc-subtitle"></span></p>
       </header>
-      <div id="loading-locations" class="text-gray-400 py-8">Loading locations...</div>
-      <div id="empty-locations" class="hidden text-gray-300 py-8">No hay localizaciones para los filtros actuales.</div>
+      <div id="loading-locations" class="text-gray-400 py-8"></div>
+      <div id="empty-locations" class="hidden text-gray-300 py-8"></div>
       <div id="locations-grid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
     </div>
   </section>
@@ -39,7 +40,27 @@ export class RickLocationList extends HTMLElement {
   }
 
   connectedCallback() {
+    this.updateLocaleStrings()
     this.fetchAllLocations()
+    window.addEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('language-changed', this.onLanguageChanged)
+  }
+
+  private onLanguageChanged = () => {
+    this.updateLocaleStrings()
+  }
+
+  private updateLocaleStrings() {
+    const el = (id: string) => this.querySelector(`#${id}`)
+    el('loc-title')!.textContent = t('loc.title')
+    el('loc-subtitle')!.textContent = t('loc.subtitle')
+    const loading = this.querySelector('#loading-locations') as HTMLElement
+    loading.textContent = t('loc.loading')
+    const empty = this.querySelector('#empty-locations') as HTMLElement
+    empty.textContent = t('loc.empty')
   }
 
   private async fetchAllLocations() {
