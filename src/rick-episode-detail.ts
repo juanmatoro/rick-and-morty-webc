@@ -6,8 +6,8 @@ template.innerHTML = `
   <div class="flex flex-col items-center p-6 text-gray-100">
     <img class="w-48 rounded-xl shadow-md object-cover" alt="season poster">
     <h2 class="text-2xl font-bold text-gray-100 mt-4"></h2>
-    <p class="text-sm text-cyan-400 mt-1"></p>
-    <p class="text-xs text-gray-400 mt-1"></p>
+    <p id="episode-code" class="text-sm text-cyan-400 mt-1"></p>
+    <p id="episode-air-date" class="text-xs text-gray-400 mt-1"></p>
     <div class="w-full mt-6 space-y-3">
       <p class="flex justify-between border-b border-gray-700 pb-1">
         <span class="font-medium text-gray-300">Season:</span>
@@ -90,8 +90,8 @@ export class RickEpisodeDetail extends HTMLElement {
     }
 
     this.querySelector('h2')!.textContent = data.name
-    this.querySelectorAll('p')[1]!.textContent = data.episode
-    this.querySelectorAll('p')[2]!.textContent = data.air_date
+    this.querySelector('#episode-code')!.textContent = data.episode
+    this.querySelector('#episode-air-date')!.textContent = data.air_date
 
     const seasonNum = meta ? meta.season : 0
     const jwLink = this.querySelector('#justwatch-link') as HTMLAnchorElement
