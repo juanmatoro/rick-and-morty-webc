@@ -233,7 +233,7 @@ export class RickList extends HTMLElement {
         this.render()
       }
     } catch (err) {
-      this.handleError(err, false)
+      console.warn('Error fetching background page:', err)
     } finally {
       this.loadingAllPages = false
       this.toggleSearchProgress(false)
