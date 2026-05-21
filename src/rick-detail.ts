@@ -81,7 +81,7 @@ export class RickDetail extends HTMLElement {
       const episodes = await Promise.all(
         episodeUrls.map(async (url) => {
           const response = await fetch(url)
-          if (!response.ok) return { url, name: url }
+          if (!response.ok) return { url, name: url, code: '' }
           const data = await response.json() as { name?: string; episode?: string }
           return { url, name: data.name ?? url, code: data.episode ?? '' }
         })
@@ -90,15 +90,41 @@ export class RickDetail extends HTMLElement {
       if (token !== this.episodeRequestToken) return
       episodesList.innerHTML = ''
 
-      for (const episode of episodes) {
-        const li = document.createElement('li')
-        const button = document.createElement('button')
-        button.type = 'button'
-        button.className = 'text-cyan-700 hover:underline text-left text-sm'
-        button.textContent = episode.code ? `${episode.code} · ${episode.name}` : episode.name
-        button.addEventListener('click', () => this.emitEpisodeSelection(episode.url))
-        li.appendChild(button)
-        episodesList.appendChild(li)
+      const seasonMap = new Map<number, typeof episodes>()
+      for (const ep of episodes) {
+        const match = ep.code.match(/S(\d+)/i)
+        const season = match ? parseInt(match[1], 10) : 0
+        if (!seasonMap.has(season)) seasonMap.set(season, [])
+        seasonMap.get(season)!.push(ep)
+      }
+
+      const sortedSeasons = Array.from(seasonMap.keys()).sort((a, b) => a - b)
+
+      for (const [i, season] of sortedSeasons.entries()) {
+        const seasonEpisodes = seasonMap.get(season)!
+        const seasonLi = document.createElement('li')
+        seasonLi.className = `text-xs font-semibold text-gray-500 uppercase tracking-wider ${i === 0 ? '' : 'mt-3'}`
+        seasonLi.textContent = `Temporada ${season}`
+        episodesList.appendChild(seasonLi)
+
+        for (const episode of seasonEpisodes) {
+          const li = document.createElement('li')
+          li.className = 'ml-2 flex items-center gap-2'
+          const button = document.createElement('button')
+          button.type = 'button'
+          button.className = 'text-cyan-700 hover:underline text-left text-sm'
+          button.textContent = episode.code ? `${episode.code} · ${episode.name}` : episode.name
+          button.addEventListener('click', () => this.emitEpisodeSelection(episode.url))
+          li.appendChild(button)
+          const link = document.createElement('a')
+          link.href = `https://www.justwatch.com/es/serie/rick-and-morty/temporada-${season}`
+          link.target = '_blank'
+          link.rel = 'noopener noreferrer'
+          link.className = 'text-xs text-cyan-400 hover:text-cyan-300 underline ml-auto'
+          link.textContent = 'JW'
+          li.appendChild(link)
+          episodesList.appendChild(li)
+        }
       }
     } catch {
       if (token !== this.episodeRequestToken) return
